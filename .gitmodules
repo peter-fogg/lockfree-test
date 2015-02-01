@@ -1,0 +1,3 @@
+[submodule "haskell-lockfree"]
+	path = haskell-lockfree
+	url = git@github.com:rrnewton/haskell-lockfree
