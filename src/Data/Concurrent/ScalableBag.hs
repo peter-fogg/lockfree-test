@@ -24,13 +24,21 @@ add bag x = atomicModifyVectorLoop bag push
   where push xs = (x:xs, Just ())
 
 remove :: ScalableBag a -> IO (Maybe a)
-remove bag = atomicModifyVectorLoop bag push
-  where push [] = ([], Nothing)
-        push (x:xs) = (xs, Just $ Just x)
+remove bag = retryLoop False bag
+  where
+    retryLoop hasContended vec | V.null vec = if hasContended then retryLoop False bag else return Nothing
+    retryLoop hasContended vec = do
+      let ref = V.head vec
+      tick <- readForCAS ref
+      case peekTicket tick of
+        [] -> retryLoop hasContended $ V.tail vec
+        (x:xs) -> do
+          (success, _) <- casIORef ref tick xs
+          if success then return $ Just x else retryLoop True $ V.tail vec
 
--- Helper for the add and remove functions. Loops through the vector,
--- trying to apply the function at each index in turn until it returns
--- a Just value and the CAS succeeds.
+-- Helper for the add function. Loops through the vector, trying to
+-- apply the function at each index in turn until it returns a Just
+-- value and the CAS succeeds.
 atomicModifyVectorLoop :: ScalableBag a -> ([a] -> ([a], Maybe b)) -> IO b
 atomicModifyVectorLoop bag act = getIndex >>= retryLoop . (flip V.drop $ bag)
   where retryLoop vec | V.null vec = retryLoop bag
