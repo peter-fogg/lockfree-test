@@ -45,8 +45,7 @@ atomicModifyVectorLoop bag act = getIndex >>= retryLoop . (flip V.drop $ bag)
         retryLoop vec = do
           let ref = V.head vec
           tick <- readForCAS ref
-          let xs = peekTicket tick
-              (new, ret) = act xs
+          let (new, ret) = act $! peekTicket tick
           case ret of
             Nothing -> retryLoop $ V.tail vec
             Just val -> do
