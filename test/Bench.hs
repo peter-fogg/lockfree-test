@@ -5,12 +5,15 @@ module Main
 
 import Control.Concurrent
 import Control.Concurrent.Async (wait, withAsyncOn)
+import Control.Monad
 import Criterion.Main
 import Criterion.Types
 import Data.Int
 
 import qualified Data.Concurrent.PureQueue as PQ
 import qualified Data.Concurrent.Queue.MichaelScott as MS
+import qualified Data.Concurrent.PureBag as PB
+import qualified Data.Concurrent.ScalableBag as SB
 
 fillN :: IO a -> (a -> Int64 -> IO ()) -> Int64 -> IO ()
 fillN newQ insert num = do
@@ -25,6 +28,25 @@ forkNFill newQ insert elems splits = do
                       let offset = fromIntegral $ chunk * fromIntegral quota
                       for_ offset (offset + quota - 1) $
                         \i -> insert q i)
+
+pushPopN :: IO a -> (a -> Int64 -> IO ()) -> (a -> IO (Maybe Int64)) -> Int64 -> Int64 -> IO ()
+pushPopN newBag push pop total batch = do
+  bag <- newBag
+  for_ 1 total $ \i -> do
+    for_ 1 batch $ \j -> push bag j
+    for_ 1 batch $ \_ -> pop bag
+
+forkNPushPop :: IO a -> (a -> Int64 -> IO ()) -> (a -> IO (Maybe Int64)) -> Int -> Int -> IO ()
+forkNPushPop newBag push pop elems splits = do
+  bag <- newBag
+  let quota = fromIntegral $ elems `quot` splits
+  forkJoin splits (\chunk -> do
+                      --  Interleave pushes and pops
+                      if even chunk then void $ pop bag
+                        else do
+                        let offset = fromIntegral $ chunk * fromIntegral quota
+                        for_ offset (offset + quota - 1) $
+                          \i -> push bag i)
 
 main :: IO ()
 main = do
@@ -48,9 +70,32 @@ main = do
        bgroup "multi-threaded" [
           bench ("push-"++show elems) $ Benchmarkable $ rep (forkNFill MS.newQ MS.pushL elems splits)
           | elems <- parSizes]
+      ],
+    bgroup "PureBag" [
+      bench "new" $ Benchmarkable $ rep PB.newBag,
+      bgroup "single-threaded" [
+        bench ("push-pop-n" ++ show n) $ Benchmarkable $ rep (pushPopN PB.newBag PB.add PB.remove n b)
+        | n <- sizes, b <- batches
+        ],
+      bgroup "multi-threaded" [
+        bench ("push-pop-n" ++ show elems) $ Benchmarkable $ rep (forkNPushPop PB.newBag PB.add PB.remove elems splits)
+        | elems <- parSizes
+        ]
+      ],
+    bgroup "ScalableBag" [
+      bench "new" $ Benchmarkable $ rep SB.newBag,
+      bgroup "single-threaded" [
+        bench ("push-pop-n" ++ show n) $ Benchmarkable $ rep (pushPopN SB.newBag SB.add SB.remove n b)
+        | n <- sizes, b <- batches
+        ],
+      bgroup "multi-threaded" [
+        bench ("push-pop-n" ++ show elems) $ Benchmarkable $ rep (forkNPushPop SB.newBag SB.add SB.remove elems splits)
+        | elems <- parSizes
+        ]
       ]
     ]
   where sizes = [10^e | e <- [0..4]]
+        batches = [50, 500]
         parSizes = [ 10000, 100000, 500000 ]
 
 for_ :: Monad m => Int64 -> Int64 -> (Int64 -> m a) -> m ()
