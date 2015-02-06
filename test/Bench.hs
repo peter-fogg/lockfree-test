@@ -29,12 +29,11 @@ forkNFill newQ insert elems splits = do
                       for_ offset (offset + quota - 1) $
                         \i -> insert q i)
 
-pushPopN :: IO a -> (a -> Int64 -> IO ()) -> (a -> IO (Maybe Int64)) -> Int64 -> Int64 -> IO ()
-pushPopN newBag push pop total batch = do
+pushPopN :: IO a -> (a -> Int64 -> IO ()) -> (a -> IO (Maybe Int64)) -> Int64 -> IO ()
+pushPopN newBag push pop total = do
   bag <- newBag
   for_ 1 total $ \i -> do
-    for_ 1 batch $ \j -> push bag j
-    for_ 1 batch $ \_ -> pop bag
+    if even i then void $ pop bag else push bag i
 
 forkNPushPop :: IO a -> (a -> Int64 -> IO ()) -> (a -> IO (Maybe Int64)) -> Int -> Int -> IO ()
 forkNPushPop newBag push pop elems splits = do
@@ -74,28 +73,27 @@ main = do
     bgroup "PureBag" [
       bench "new" $ Benchmarkable $ rep PB.newBag,
       bgroup "single-threaded" [
-        bench ("push-pop-n" ++ show n) $ Benchmarkable $ rep (pushPopN PB.newBag PB.add PB.remove n b)
-        | n <- sizes, b <- batches
+        bench ("push-pop-n-" ++ show n) $ Benchmarkable $ rep (pushPopN PB.newBag PB.add PB.remove n)
+        | n <- sizes
         ],
       bgroup "multi-threaded" [
-        bench ("push-pop-n" ++ show elems) $ Benchmarkable $ rep (forkNPushPop PB.newBag PB.add PB.remove elems splits)
+        bench ("push-pop-n-" ++ show elems) $ Benchmarkable $ rep (forkNPushPop PB.newBag PB.add PB.remove elems splits)
         | elems <- parSizes
         ]
       ],
     bgroup "ScalableBag" [
       bench "new" $ Benchmarkable $ rep SB.newBag,
       bgroup "single-threaded" [
-        bench ("push-pop-n" ++ show n) $ Benchmarkable $ rep (pushPopN SB.newBag SB.add SB.remove n b)
-        | n <- sizes, b <- batches
+        bench ("push-pop-n-" ++ show n) $ Benchmarkable $ rep (pushPopN SB.newBag SB.add SB.remove n)
+        | n <- sizes
         ],
       bgroup "multi-threaded" [
-        bench ("push-pop-n" ++ show elems) $ Benchmarkable $ rep (forkNPushPop SB.newBag SB.add SB.remove elems splits)
+        bench ("push-pop-n-" ++ show elems) $ Benchmarkable $ rep (forkNPushPop SB.newBag SB.add SB.remove elems splits)
         | elems <- parSizes
         ]
       ]
     ]
   where sizes = [10^e | e <- [0..4]]
-        batches = [50, 500]
         parSizes = [ 10000, 100000, 500000 ]
 
 for_ :: Monad m => Int64 -> Int64 -> (Int64 -> m a) -> m ()
