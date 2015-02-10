@@ -63,7 +63,8 @@ cabal configure --enable-benchmarks
 cabal build ${executable}
 
 REPORT=report_${executable}
-CRITREPORT=$REPORT.crit
 
-time ./dist/build/$executable/$executable --output $CRITREPORT.html $REGRESSES +RTS -T -s -N -ls
-# time ./dist/build/$executable/$executable --raw $CRITREPORT $REGRESSES +RTS -T -s -N
+for i in 1 2 4 8 16 32; do
+    CRITREPORT=$REPORT-N$i.crit
+    time ./dist/build/$executable/$executable "PureBag/" "ScalableBag/" --raw $CRITREPORT $REGRESSES +RTS -T -s -N$i -ls
+done
