@@ -19,6 +19,7 @@ library
   exposed-modules: Data.Concurrent.PureQueue
                    , Data.Concurrent.PureBag
                    , Data.Concurrent.ScalableBag
+                   , Data.Concurrent.AdaptiveBag
   build-depends: base >= 4.6
                  , containers >= 0.5.5
                  , atomic-primops >= 0.7
