@@ -37,6 +37,8 @@ benchmark bench-lockfree-test
                    , criterion >= 1.0
                    , lockfree-queue >= 0.2
                    , async >= 2.0 && < 2.1
+                   , vector >= 0.10
+                   , random >= 1.1
                    , lockfree-test
     if flag(debug)
       ghc-options: -keep-tmp-files -dsuppress-module-prefixes -ddump-to-file -ddump-core-stats -ddump-simpl-stats -dcore-lint -dcmm-lint -ddump-ds -ddump-simpl -ddump-stg -ddump-asm -ddump-bcos -ddump-cmm -ddump-opt-cmm -ddump-inlinings

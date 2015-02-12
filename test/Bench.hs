@@ -9,6 +9,9 @@ import Control.Monad
 import Criterion.Main
 import Criterion.Types
 import Data.Int
+import qualified Data.Vector.Mutable as VM
+import qualified Data.Vector.Storable as VS
+import System.Random
 
 import qualified Data.Concurrent.PureQueue as PQ
 import qualified Data.Concurrent.Queue.MichaelScott as MS
@@ -40,16 +43,45 @@ forkNPushPop newBag push pop elems splits = do
   bag <- newBag
   let quota = fromIntegral $ elems `quot` splits
   forkJoin splits (\chunk -> do
+                      let offset = fromIntegral $ chunk * fromIntegral quota
                       --  Interleave pushes and pops
-                      if even chunk then void $ pop bag
-                        else do
-                        let offset = fromIntegral $ chunk * fromIntegral quota
-                        for_ offset (offset + quota - 1) $
-                          \i -> push bag i)
+                      for_ offset (offset + quota - 1) $ \i ->
+                        if even chunk then void $ pop bag
+                        else push bag i)
+
+fork5050 :: IO a -> (a -> Int64 -> IO ()) -> (a -> IO (Maybe Int64)) -> Int -> Int -> VS.Vector Int -> IO ()
+fork5050 newBag push pop elems splits vec = do
+  bag <- newBag
+  let quota = fromIntegral $ elems `quot` splits
+  forkJoin splits (\chunk -> do
+                      let shouldPop = vec VS.! chunk == 0
+                          offset = fromIntegral $ chunk * fromIntegral quota
+                      for_ offset (offset + quota - 1) $ \i ->
+                        if shouldPop then void $ pop bag
+                        else push bag i)
+
+hotKeyOrRandom :: IO a -> (a -> Int64 -> IO ()) -> Int -> Int -> VM.IOVector (Maybe a) -> IO ()
+hotKeyOrRandom newBag push reps splits vec = do
+  forkJoin splits (\chunk -> for_ 1 (fromIntegral reps) $ \i -> do
+                      flip <- randomRIO (0, 1) :: IO Float
+                      idx <- if flip < 0.5 then randomRIO (0, VM.length vec - 1) else return 0
+                      elem <- VM.read vec idx
+                      b <- case elem of
+                          Nothing -> do
+                            b <- newBag
+                            VM.write vec idx $ Just b
+                            return b
+                          Just b -> return b
+                      push b i)
 
 main :: IO ()
 main = do
   splits <- getNumCapabilities
+  -- Initialize randomness for fork5050
+  randomVec <- VS.replicateM splits (randomRIO (0, 1) :: IO Int)
+  -- Initialize vector of Nothing for hotKeyOrRandom
+  pureNothingVec <- VM.replicate splits Nothing -- TODO how big should this vector be?
+  scalableNothingVec <- VM.replicate splits Nothing
   putStrLn $ "using " ++ show splits ++ " capabilities"
   defaultMain [
     bgroup "PureQueue" [
@@ -76,9 +108,15 @@ main = do
         bench ("push-pop-n-" ++ show n) $ Benchmarkable $ rep (pushPopN PB.newBag PB.add PB.remove n)
         | n <- sizes
         ],
-      bgroup "multi-threaded" [
+      bgroup "multi-threaded" $ [
         bench ("push-pop-n-" ++ show elems) $ Benchmarkable $ rep (forkNPushPop PB.newBag PB.add PB.remove elems splits)
         | elems <- parSizes
+        ] ++ [
+        bench ("random-50-50-" ++ show elems) $ Benchmarkable $ rep (fork5050 PB.newBag PB.add PB.remove elems splits randomVec)
+        | elems <- parSizes
+        ] ++ [
+        bench ("hotkey-" ++ show elems) $ Benchmarkable $ rep (hotKeyOrRandom PB.newBag PB.add elems splits pureNothingVec)
+        | elems <- [10000, 50000]
         ]
       ],
     bgroup "ScalableBag" [
@@ -87,9 +125,15 @@ main = do
         bench ("push-pop-n-" ++ show n) $ Benchmarkable $ rep (pushPopN SB.newBag SB.add SB.remove n)
         | n <- sizes
         ],
-      bgroup "multi-threaded" [
+      bgroup "multi-threaded" $ [
         bench ("push-pop-n-" ++ show elems) $ Benchmarkable $ rep (forkNPushPop SB.newBag SB.add SB.remove elems splits)
         | elems <- parSizes
+        ] ++ [
+        bench ("random-50-50-" ++ show elems) $ Benchmarkable $ rep (fork5050 SB.newBag SB.add SB.remove elems splits randomVec)
+        | elems <- parSizes
+        ] ++ [
+        bench ("hotkey-" ++ show elems) $ Benchmarkable $ rep (hotKeyOrRandom SB.newBag SB.add elems splits scalableNothingVec)
+        | elems <- [10000, 50000]
         ]
       ]
     ]
