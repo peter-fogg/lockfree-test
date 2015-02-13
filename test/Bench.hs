@@ -15,6 +15,7 @@ import System.Random
 
 import qualified Data.Concurrent.PureQueue as PQ
 import qualified Data.Concurrent.Queue.MichaelScott as MS
+import qualified Data.Concurrent.AdaptiveBag as AB
 import qualified Data.Concurrent.PureBag as PB
 import qualified Data.Concurrent.ScalableBag as SB
 
@@ -82,6 +83,7 @@ main = do
   -- Initialize vector of Nothing for hotKeyOrRandom
   pureNothingVec <- VM.replicate splits Nothing -- TODO how big should this vector be?
   scalableNothingVec <- VM.replicate splits Nothing
+  adaptiveNothingVec <- VM.replicate splits Nothing
   putStrLn $ "using " ++ show splits ++ " capabilities"
   defaultMain [
     bgroup "PureQueue" [
@@ -102,43 +104,30 @@ main = do
           bench ("push-"++show elems) $ Benchmarkable $ rep (forkNFill MS.newQ MS.pushL elems splits)
           | elems <- parSizes]
       ],
-    bgroup "PureBag" [
-      bench "new" $ Benchmarkable $ rep PB.newBag,
-      bgroup "single-threaded" [
-        bench ("push-pop-n-" ++ show n) $ Benchmarkable $ rep (pushPopN PB.newBag PB.add PB.remove n)
-        | n <- sizes
-        ],
-      bgroup "multi-threaded" $ [
-        bench ("push-pop-n-" ++ show elems) $ Benchmarkable $ rep (forkNPushPop PB.newBag PB.add PB.remove elems splits)
-        | elems <- parSizes
-        ] ++ [
-        bench ("random-50-50-" ++ show elems) $ Benchmarkable $ rep (fork5050 PB.newBag PB.add PB.remove elems splits randomVec)
-        | elems <- parSizes
-        ] ++ [
-        bench ("hotkey-" ++ show elems) $ Benchmarkable $ rep (hotKeyOrRandom PB.newBag PB.add elems splits pureNothingVec)
-        | elems <- [10000, 50000]
-        ]
+    bgroup "new" [
+      bench "PureBag" $ Benchmarkable $ rep PB.newBag,
+      bench "ScalableBag" $ Benchmarkable $ rep SB.newBag,
+      bench "AdaptiveBag" $ Benchmarkable $ rep AB.newBag
       ],
-    bgroup "ScalableBag" [
-      bench "new" $ Benchmarkable $ rep SB.newBag,
-      bgroup "single-threaded" [
-        bench ("push-pop-n-" ++ show n) $ Benchmarkable $ rep (pushPopN SB.newBag SB.add SB.remove n)
-        | n <- sizes
-        ],
-      bgroup "multi-threaded" $ [
-        bench ("push-pop-n-" ++ show elems) $ Benchmarkable $ rep (forkNPushPop SB.newBag SB.add SB.remove elems splits)
-        | elems <- parSizes
-        ] ++ [
-        bench ("random-50-50-" ++ show elems) $ Benchmarkable $ rep (fork5050 SB.newBag SB.add SB.remove elems splits randomVec)
-        | elems <- parSizes
-        ] ++ [
-        bench ("hotkey-" ++ show elems) $ Benchmarkable $ rep (hotKeyOrRandom SB.newBag SB.add elems splits scalableNothingVec)
-        | elems <- [10000, 50000]
-        ]
+    bgroup "random-50-50" $ [
+      bench ("PureBag-" ++ show elems) $ Benchmarkable $ rep (fork5050 PB.newBag PB.add PB.remove elems splits randomVec)
+      | elems <- parSizes
+      ] ++ [
+      bench ("ScalableBag-" ++ show elems) $ Benchmarkable $ rep (fork5050 SB.newBag SB.add SB.remove elems splits randomVec)
+      | elems <- parSizes
+      ] ++ [
+      bench ("AdaptiveBag-" ++ show elems) $ Benchmarkable $ rep (fork5050 AB.newBag AB.add AB.remove elems splits randomVec)
+      | elems <- parSizes
+      ],
+    bgroup "hotkey" $ [
+      bench "PureBag" $ Benchmarkable $ rep (hotKeyOrRandom PB.newBag PB.add hotkeySize splits pureNothingVec),
+      bench "ScalableBag" $ Benchmarkable $ rep (hotKeyOrRandom SB.newBag SB.add hotkeySize splits scalableNothingVec),
+      bench "AdaptiveBag" $ Benchmarkable $ rep (hotKeyOrRandom AB.newBag AB.add hotkeySize splits adaptiveNothingVec)
       ]
     ]
   where sizes = [10^e | e <- [0..4]]
         parSizes = [ 10000, 100000, 500000 ]
+        hotkeySize = 100
 
 for_ :: Monad m => Int64 -> Int64 -> (Int64 -> m a) -> m ()
 for_ start end _ | start > end = error "start greater than end"

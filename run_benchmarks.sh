@@ -66,5 +66,5 @@ REPORT=report_${executable}
 
 for i in 1 2 4 8 16 32; do
     CRITREPORT=$REPORT-N$i.crit
-    time ./dist/build/$executable/$executable "PureBag/" "ScalableBag/" --raw $CRITREPORT $REGRESSES +RTS -T -s -N$i -ls
+    time ./dist/build/$executable/$executable "AdaptiveBag/" "PureBag/" "ScalableBag/" --raw $CRITREPORT $REGRESSES +RTS -T -s -N$i -ls
 done
