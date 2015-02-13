@@ -30,7 +30,6 @@ add bag x = do
     Pure xs -> do
       (success, _) <- casIORef bag tick $ Pure (x:xs)
       unless success $ transition bag >> add bag x -- make sure this write isn't dropped
-      
     Trans xs vec -> pushVec vec
     LockFree vec -> pushVec vec
   where pushVec vec =
@@ -43,7 +42,7 @@ add bag x = do
                 let ref = V.head v
                 tick <- readForCAS ref
                 (success, _) <- casIORef ref tick (x:peekTicket tick)
-                if success then return () else retryLoop $ V.tail vec
+                if success then return () else retryLoop $ V.tail v
           in getIndex >>= retryLoop . (flip V.drop $ vec)
 
 -- Attempt to pop from the bag, returning Nothing if it's empty.
