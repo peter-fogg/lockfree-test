@@ -79,7 +79,7 @@ remove bag = do
                   [] -> retryLoop hasContended $ V.tail v
                   (x:xs) -> do
                     (success, _) <- casIORef ref tick xs
-                    if success then return $ Just x else retryLoop True $ V.tail vec
+                    if success then return $ Just x else retryLoop True $ V.tail v
           in retryLoop False vec
 
 transition :: AdaptiveBag a -> IO ()
