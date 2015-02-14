@@ -64,7 +64,23 @@ cabal build ${executable}
 
 REPORT=report_${executable}
 
+# Remove old versions to prevent inconsistent data
 for i in 1 2 4 8 16 32; do
     CRITREPORT=$REPORT-N$i.crit
-    time ./dist/build/$executable/$executable "AdaptiveBag/" "PureBag/" "ScalableBag/" --raw $CRITREPORT $REGRESSES +RTS -T -s -N$i -ls
+    rm $CRITREPORT
+    rm $CRITREPORT.html
 done
+
+for i in 1 2 4 8 16 32; do
+    CRITREPORT=$REPORT-N$i.crit
+    ./dist/build/$executable/$executable "new/PureBag" "new/ScalableBag" "random-50-50/PureBag" "random-50-50/ScalableBag" "hotkey/PureBag" "hotkey/ScalableBag" --output=$CRITREPORT.html --raw $CRITREPORT $REGRESSES +RTS -T -s -N$i
+done
+
+if [ $? = 0 ]; then
+    mkdir -p reports
+    cp *.html reports
+    cp *.crit reports
+    tar -cvf reports.tar reports/
+else
+    echo "Some benchmarks errored out! Don't expect good data."
+fi

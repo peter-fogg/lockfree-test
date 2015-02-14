@@ -1,3 +1,5 @@
+{-# LANGUAGE BangPatterns #-}
+
 module Data.Concurrent.AdaptiveBag
        (
          AdaptiveBag
@@ -11,11 +13,12 @@ import Control.Concurrent
 import Control.Monad
 import Data.Atomics
 import Data.IORef
-import Data.Vector as V
+import qualified Data.Vector as V
+import Unsafe.Coerce
 
-data Hybrid a = Pure [a]
-              | Trans [a] (Vector (IORef [a]))
-              | LockFree (Vector (IORef [a]))
+data Hybrid a = Pure ![a]
+              | Trans ![a] !(V.Vector (IORef [a]))
+              | LockFree !(V.Vector (IORef [a]))
 
 type AdaptiveBag a = IORef (Hybrid a)
 
@@ -83,21 +86,21 @@ remove bag = do
 
 transition :: AdaptiveBag a -> IO ()
 transition bag = do
-  val <- readIORef bag
-  case val of
+  tick <- readForCAS bag
+  case peekTicket tick of
     Pure xs -> do
       caps <- getNumCapabilities
       vec <- V.replicateM caps $ newIORef []
-      -- Fork off a thread to write into the new vector
-      forkIO $ do
-        let copy _ [] = return ()
-            copy v _ | V.null v = copy vec xs
-            copy v (x:xs) = atomicModifyIORefCAS_ (V.head v) (x:) >> copy (V.tail v) xs
-        copy vec xs
-        -- Copying complete, switch to the lockfree version
+      (success, _) <- casIORef bag tick (Trans xs vec)
+      when success $ do
+        putStrLn $ "[TRANSITION]" ++ show (unsafeCoerce bag :: Int) -- beware!
+        forkIO $ do
+          let copy _ [] = return ()
+              copy v _ | V.null v = copy vec xs
+              copy v (x:xs) = atomicModifyIORefCAS_ (V.head v) (x:) >> copy (V.tail v) xs
+          copy vec xs
         atomicModifyIORefCAS_ bag (const $ LockFree vec)
-      atomicModifyIORefCAS_ bag (const $ Trans xs vec)
-    _ -> return () -- already in a different state; no need to transition
+    _ -> return ()
 
 -- Return the index in the vector that this thread should access.
 getIndex :: IO Int
