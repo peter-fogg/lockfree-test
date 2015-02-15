@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 module Data.Concurrent.PureBag
        (
          PureBag
@@ -18,7 +19,8 @@ newBag = newIORef []
 add :: PureBag a -> a -> IO ()
 add bag x = do
   tick <- readForCAS bag
-  (success, _) <- casIORef bag tick (x:peekTicket tick)
+  let !a = peekTicket tick
+  (success, _) <- casIORef bag tick (x:a)
   if success then return () else add bag x
 
 remove :: PureBag a -> IO (Maybe a)

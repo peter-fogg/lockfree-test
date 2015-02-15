@@ -32,7 +32,7 @@ library
 benchmark bench-lockfree-test
     type: exitcode-stdio-1.0
     main-is: Bench.hs
-    ghc-options: -O2 -threaded -rtsopts -with-rtsopts=-N -eventlog
+    ghc-options: -O2 -threaded -rtsopts -with-rtsopts=-N 
     hs-source-dirs: test/
     build-depends: base >= 4.6 && <= 4.8
                    , criterion >= 1.0
@@ -42,4 +42,5 @@ benchmark bench-lockfree-test
                    , random >= 1.1
                    , lockfree-test
     if flag(debug)
+      ghc-options: -eventlog
       ghc-options: -keep-tmp-files -dsuppress-module-prefixes -ddump-to-file -ddump-core-stats -ddump-simpl-stats -dcore-lint -dcmm-lint -ddump-ds -ddump-simpl -ddump-stg -ddump-asm -ddump-bcos -ddump-cmm -ddump-opt-cmm -ddump-inlinings
